@@ -2,13 +2,10 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 
 const color = ref('#FFFFFF');
 const locked = ref(false);
 const showCopied = ref(false);
-
-const appWindow = getCurrentWebviewWindow();
 
 interface ColorEvent {
   hex: string;

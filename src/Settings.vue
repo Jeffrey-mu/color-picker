@@ -9,7 +9,7 @@ const recording = ref(false);
 const keys = ref<Set<string>>(new Set());
 
 // 任务队列，防止注销和注册快捷键发生竞态条件
-let shortcutTask = Promise.resolve();
+let shortcutTask: Promise<void> = Promise.resolve();
 
 const autoCopy = ref(true);
 const copyFormat = ref('#RRGGBB');
@@ -64,7 +64,7 @@ const startRecording = () => {
   currentShortcut.value = '请按下快捷键...';
   
   // 加入队列，确保按顺序执行
-  shortcutTask = shortcutTask.then(() => invoke('unregister_shortcut')).catch(e => {
+  shortcutTask = shortcutTask.then(() => invoke<void>('unregister_shortcut')).catch(e => {
     console.error('Failed to unregister shortcut:', e);
   });
 };
@@ -77,7 +77,7 @@ const cancelRecording = () => {
   // 恢复原始快捷键，加入队列
   let formatted = originalShortcut.value;
   formatted = formatted.replace('Command', 'Super');
-  shortcutTask = shortcutTask.then(() => invoke('set_shortcut', { newShortcut: formatted })).catch(e => {
+  shortcutTask = shortcutTask.then(() => invoke<void>('set_shortcut', { newShortcut: formatted })).catch(e => {
     console.error('Failed to restore shortcut:', e);
   });
 };
@@ -159,7 +159,7 @@ const finishRecording = () => {
     currentShortcut.value = '无效快捷键，请重新设置';
     
     let originalFormatted = originalShortcut.value.replace('Command', 'Super');
-    shortcutTask = shortcutTask.then(() => invoke('set_shortcut', { newShortcut: originalFormatted })).catch(console.error);
+    shortcutTask = shortcutTask.then(() => invoke<void>('set_shortcut', { newShortcut: originalFormatted })).catch(console.error);
     
     setTimeout(() => {
       if (currentShortcut.value === '无效快捷键，请重新设置') {
@@ -173,7 +173,7 @@ const finishRecording = () => {
   // Tauri 快捷键中 Command 映射为 Super
   formatted = formatted.replace('Command', 'Super');
   
-  shortcutTask = shortcutTask.then(() => invoke('set_shortcut', { newShortcut: formatted }))
+  shortcutTask = shortcutTask.then(() => invoke<void>('set_shortcut', { newShortcut: formatted }))
     .then(() => {
       console.log('Shortcut saved');
       originalShortcut.value = currentShortcut.value;
@@ -189,7 +189,7 @@ const finishRecording = () => {
       currentShortcut.value = '保存失败: ' + err;
       
       let originalFormatted = originalShortcut.value.replace('Command', 'Super');
-      shortcutTask = shortcutTask.then(() => invoke('set_shortcut', { newShortcut: originalFormatted })).catch(console.error);
+      shortcutTask = shortcutTask.then(() => invoke<void>('set_shortcut', { newShortcut: originalFormatted })).catch(console.error);
       
       setTimeout(() => {
         if (currentShortcut.value.includes('保存失败')) {
