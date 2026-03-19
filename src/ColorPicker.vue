@@ -257,13 +257,3 @@ onUnmounted(() => {
     </transition>
   </div>
 </template>
-
-<style>
-.picker-grid {
-  background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.25) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.25) 1px, transparent 1px);
-  background-size: 10px 10px;
-  background-position: center center;
-}
-</style>

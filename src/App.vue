@@ -1,31 +1,41 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted } from 'vue';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { listen } from '@tauri-apps/api/event';
 import ColorPicker from './ColorPicker.vue';
 import Settings from './Settings.vue';
 
 const appWindow = getCurrentWebviewWindow();
-const isSettingsWindow = appWindow.label === 'settings';
-const isPickingMode = ref(false);
+const isSettingsWindow = appWindow?.label === 'settings';
+
+console.log('App window label:', appWindow?.label);
 
 onMounted(async () => {
+  // 设置 html 和 #app 的基础全屏无边距样式
+  document.documentElement.className = "m-0 p-0 w-screen h-screen overflow-hidden";
+  const appEl = document.getElementById('app');
+  if (appEl) {
+    appEl.className = "m-0 p-0 w-screen h-screen overflow-hidden";
+  }
+
   if (isSettingsWindow) {
-    document.body.classList.add('settings-mode');
+    // 设置页面样式
+    document.body.className = "m-0 p-0 w-screen h-screen overflow-y-auto bg-[#f5f5f5]";
   } else {
-    // Listen for start/exit events to toggle the cursor
+    // 取色器页面样式
+    const pickerActiveClasses = "m-0 p-0 w-screen h-screen overflow-hidden bg-transparent cursor-[url('/app-icon-32.png')_0_32,crosshair]";
+    const pickerInactiveClasses = "m-0 p-0 w-screen h-screen overflow-hidden bg-transparent";
+
     await listen('start-picking', () => {
-      isPickingMode.value = true;
-      document.body.classList.add('picker-mode');
+      document.body.className = pickerActiveClasses;
     });
     
     await listen('exit-picking', () => {
-      isPickingMode.value = false;
-      document.body.classList.remove('picker-mode');
+      document.body.className = pickerInactiveClasses;
     });
     
-    // Initially add picker-mode if we're not settings
-    document.body.classList.add('picker-mode');
+    // 初始化为取色模式
+    document.body.className = pickerActiveClasses;
   }
 });
 </script>
@@ -34,24 +44,3 @@ onMounted(async () => {
   <Settings v-if="isSettingsWindow" />
   <ColorPicker v-else />
 </template>
-
-<style>
-/* Remove default body margin and set transparent background */
-body, html, #app {
-  margin: 0;
-  padding: 0;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-}
-
-body.picker-mode {
-  background-color: transparent !important;
-  cursor: url('/app-icon-32.png') 0 32, crosshair !important;
-}
-
-body.settings-mode {
-  background-color: #f5f5f5 !important;
-  overflow-y: auto;
-}
-</style>
