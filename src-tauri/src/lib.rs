@@ -309,7 +309,16 @@ pub fn run() {
                 tauri_plugin_global_shortcut::Builder::new()
                     .with_handler(move |app, _req_shortcut, event| {
                         if event.state == ShortcutState::Pressed {
-                            if let Some(window) = app.get_webview_window("main") {
+                            // Only trigger picking if the settings window is NOT focused
+                            let mut is_settings_focused = false;
+                            if let Some(settings_window) = app.get_webview_window("settings") {
+                                if let Ok(focused) = settings_window.is_focused() {
+                                    is_settings_focused = focused;
+                                }
+                            }
+                            
+                            if !is_settings_focused {
+                                if let Some(window) = app.get_webview_window("main") {
                                 let is_visible = window.is_visible().unwrap_or(false);
                                 if is_visible {
                                     let _ = window.hide();
@@ -334,6 +343,7 @@ pub fn run() {
                                     }
                                 }
                             }
+                        }
                         }
                     })
                     .build(),
