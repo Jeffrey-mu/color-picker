@@ -1,16 +1,31 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import ColorPicker from './ColorPicker.vue';
 import Settings from './Settings.vue';
 
 const appWindow = getCurrentWebviewWindow();
 const isSettingsWindow = appWindow.label === 'settings';
+const isPickingMode = ref(false);
 
-onMounted(() => {
+onMounted(async () => {
   if (isSettingsWindow) {
     document.body.classList.add('settings-mode');
   } else {
+    // Listen for start/exit events to toggle the cursor
+    await listen('start-picking', () => {
+      isPickingMode.value = true;
+      document.body.classList.add('picker-mode');
+    });
+    
+    await listen('exit-picking', () => {
+      isPickingMode.value = false;
+      document.body.classList.remove('picker-mode');
+    });
+    
+    // Initially add picker-mode if we're not settings
     document.body.classList.add('picker-mode');
   }
 });
@@ -33,7 +48,7 @@ body, html, #app {
 
 body.picker-mode {
   background-color: transparent !important;
-  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white" stroke="black" stroke-width="1.5"><path d="M14.5 2.5l7 7-2 2-7-7 2-2z"/><path d="M12.5 4.5l7 7-10 10-4 1-1-4 10-10z"/></svg>') 5 22, crosshair !important;
+  cursor: url('/app-icon-32.png') 0 32, crosshair !important;
 }
 
 body.settings-mode {

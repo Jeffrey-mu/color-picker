@@ -121,8 +121,41 @@ fn start_picking(state: tauri::State<'_, AppState>) {
 }
 
 #[tauri::command]
-fn stop_picking(state: tauri::State<'_, AppState>) {
+fn stop_picking(app_handle: tauri::AppHandle, state: tauri::State<'_, AppState>) {
     state.picking.store(false, Ordering::SeqCst);
+    if let Some(window) = app_handle.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    let _ = app_handle.emit("exit-picking", ());
+}
+
+#[tauri::command]
+fn toggle_window(app_handle: tauri::AppHandle, state: tauri::State<'_, AppState>) {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        let is_visible = window.is_visible().unwrap_or(false);
+        if is_visible {
+            let _ = window.hide();
+            state.picking.store(false, Ordering::SeqCst);
+            // 确保先隐藏窗口再发射事件
+            let _ = app_handle.emit("exit-picking", ());
+        } else {
+            let _ = window.show();
+            state.picking.store(true, Ordering::SeqCst);
+            let position = Mouse::get_mouse_position();
+            if let Mouse::Position { x, y } = position {
+                if let Ok(size) = window.outer_size() {
+                    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { 
+                        x: (x as i32) - (size.width as i32 / 2), 
+                        y: (y as i32) - (size.height as i32 / 2) 
+                    }));
+                }
+                let _ = app_handle.emit("start-picking", MouseMoveEvent { x, y });
+                let _ = app_handle.emit("mouse-move", MouseMoveEvent { x, y });
+            } else {
+                let _ = app_handle.emit("start-picking", MouseMoveEvent { x: -1, y: -1 });
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -135,6 +168,91 @@ fn get_current_color(state: tauri::State<'_, AppState>, radius: i32, x: i32, y: 
     get_color_grid(x, y, radius).map(|(hex, grid)| ColorEvent { x, y, hex, grid })
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+struct AppSettings {
+    auto_copy: bool,
+    copy_format: String,
+    lowercase_hex: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            auto_copy: true,
+            copy_format: "#RRGGBB".to_string(),
+            lowercase_hex: false,
+        }
+    }
+}
+
+fn load_settings(app_handle: &tauri::AppHandle) -> AppSettings {
+    let config_path = app_handle.path().app_config_dir().unwrap().join("settings.json");
+    if let Ok(data) = std::fs::read_to_string(config_path) {
+        if let Ok(settings) = serde_json::from_str(&data) {
+            return settings;
+        }
+    }
+    AppSettings::default()
+}
+
+#[tauri::command]
+fn get_app_settings(app_handle: tauri::AppHandle) -> AppSettings {
+    load_settings(&app_handle)
+}
+
+#[tauri::command]
+fn set_app_settings(app_handle: tauri::AppHandle, settings: AppSettings) -> Result<(), String> {
+    let config_dir = app_handle.path().app_config_dir().unwrap();
+    if !config_dir.exists() {
+        let _ = std::fs::create_dir_all(&config_dir);
+    }
+    let config_path = config_dir.join("settings.json");
+    let data = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(config_path, data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn format_color(hex: &str, format: &str, lowercase: bool) -> String {
+    let hex_val = if lowercase { hex.to_lowercase() } else { hex.to_uppercase() };
+    
+    // Parse RGB
+    let r = u8::from_str_radix(&hex[1..3], 16).unwrap_or(0);
+    let g = u8::from_str_radix(&hex[3..5], 16).unwrap_or(0);
+    let b = u8::from_str_radix(&hex[5..7], 16).unwrap_or(0);
+    
+    match format {
+        "#RRGGBB" => hex_val,
+        "RRGGBB" => hex_val[1..].to_string(),
+        "rgb(R, G, B)" => format!("rgb({}, {}, {})", r, g, b),
+        "rgb(R%, G%, B%)" => format!("rgb({}%, {}%, {}%)", (r as f32 / 255.0 * 100.0).round(), (g as f32 / 255.0 * 100.0).round(), (b as f32 / 255.0 * 100.0).round()),
+        "hsl(H, S%, L%)" => {
+            let r_f = r as f32 / 255.0;
+            let g_f = g as f32 / 255.0;
+            let b_f = b as f32 / 255.0;
+            let max = r_f.max(g_f).max(b_f);
+            let min = r_f.min(g_f).min(b_f);
+            let mut h = 0.0;
+            let mut s = 0.0;
+            let l = (max + min) / 2.0;
+
+            if max != min {
+                let d = max - min;
+                s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
+                if max == r_f {
+                    h = (g_f - b_f) / d + (if g_f < b_f { 6.0 } else { 0.0 });
+                } else if max == g_f {
+                    h = (b_f - r_f) / d + 2.0;
+                } else if max == b_f {
+                    h = (r_f - g_f) / d + 4.0;
+                }
+                h /= 6.0;
+            }
+            format!("hsl({}, {}%, {}%)", (h * 360.0).round(), (s * 100.0).round(), (l * 100.0).round())
+        },
+        _ => hex_val,
+    }
+}
+
 #[tauri::command]
 fn get_shortcut(app_handle: tauri::AppHandle) -> String {
     let config_path = app_handle.path().app_config_dir().unwrap().join("shortcut.txt");
@@ -143,6 +261,13 @@ fn get_shortcut(app_handle: tauri::AppHandle) -> String {
     } else {
         "Alt+Shift+C".to_string()
     }
+}
+
+#[tauri::command]
+fn unregister_shortcut(app_handle: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let _ = app_handle.global_shortcut().unregister_all();
+    Ok(())
 }
 
 #[tauri::command]
@@ -225,8 +350,13 @@ pub fn run() {
                                 let position = Mouse::get_mouse_position();
                                 if let Mouse::Position { x, y } = position {
                                     if let Some((hex, _)) = get_color_grid(x, y, 0) {
-                                        let _ = app_handle.clipboard().write_text(hex.clone());
-                                        let _ = app_handle.emit("color-copied", hex);
+                                        let settings = load_settings(&app_handle);
+                                        let formatted_color = format_color(&hex, &settings.copy_format, settings.lowercase_hex);
+                                        
+                                        if settings.auto_copy {
+                                            let _ = app_handle.clipboard().write_text(formatted_color.clone());
+                                        }
+                                        let _ = app_handle.emit("color-copied", formatted_color);
                                     }
                                 }
                                 
@@ -237,11 +367,12 @@ pub fn run() {
                             }
                         }
                         EventType::KeyPress(rdev::Key::Escape) => {
-                            let _ = app_handle.emit("exit-picking", ());
+                            // Exit picking mode on Escape
                             picking_state_clone.store(false, Ordering::SeqCst);
                             if let Some(window) = app_handle.get_webview_window("main") {
                                 let _ = window.hide();
                             }
+                            let _ = app_handle.emit("exit-picking", ());
                         }
                         _ => {}
                     }
@@ -358,9 +489,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_picking,
             stop_picking,
+            toggle_window,
             get_current_color,
             get_shortcut,
-            set_shortcut
+            unregister_shortcut,
+            set_shortcut,
+            get_app_settings,
+            set_app_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

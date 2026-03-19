@@ -99,8 +99,13 @@ const handleWheel = async (e: WheelEvent) => {
 
 const handleKeyDown = async (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
+    // 立即清除所有 UI 状态
+    isPickingUi.value = false;
+    locked.value = false;
+    showCopied.value = false;
+    
+    // 明确调用 stop_picking 而不是 toggle_window，防止状态翻转导致闪烁
     await invoke('stop_picking');
-    await appWindow.hide();
   }
 };
 
