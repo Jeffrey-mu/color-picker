@@ -114,6 +114,7 @@ struct AppState {
     picking: Arc<AtomicBool>,
 }
 
+
 #[tauri::command]
 fn start_picking(state: tauri::State<'_, AppState>) {
     state.picking.store(true, Ordering::SeqCst);
@@ -132,6 +133,41 @@ fn get_current_color(state: tauri::State<'_, AppState>, radius: i32, x: i32, y: 
     }
 
     get_color_grid(x, y, radius).map(|(hex, grid)| ColorEvent { x, y, hex, grid })
+}
+
+#[tauri::command]
+fn get_shortcut(app_handle: tauri::AppHandle) -> String {
+    let config_path = app_handle.path().app_config_dir().unwrap().join("shortcut.txt");
+    if let Ok(shortcut) = std::fs::read_to_string(config_path) {
+        shortcut
+    } else {
+        "Alt+Shift+C".to_string()
+    }
+}
+
+#[tauri::command]
+fn set_shortcut(app_handle: tauri::AppHandle, new_shortcut: String) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+    use std::str::FromStr;
+    
+    let config_dir = app_handle.path().app_config_dir().unwrap();
+    if !config_dir.exists() {
+        let _ = std::fs::create_dir_all(&config_dir);
+    }
+    let config_path = config_dir.join("shortcut.txt");
+    
+    let shortcut_obj = Shortcut::from_str(&new_shortcut).map_err(|e| e.to_string())?;
+    
+    // Unregister all existing
+    let _ = app_handle.global_shortcut().unregister_all();
+    
+    // Register new
+    app_handle.global_shortcut().register(shortcut_obj).map_err(|e| e.to_string())?;
+    
+    // Save to file
+    std::fs::write(config_path, new_shortcut).map_err(|e| e.to_string())?;
+    
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -217,7 +253,8 @@ pub fn run() {
             // Set up system tray
             let quit_i = tauri::menu::MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let toggle_i = tauri::menu::MenuItem::with_id(app, "toggle", "显示/隐藏悬浮窗", true, None::<&str>)?;
-            let menu = tauri::menu::Menu::with_items(app, &[&toggle_i, &quit_i])?;
+            let settings_i = tauri::menu::MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
+            let menu = tauri::menu::Menu::with_items(app, &[&toggle_i, &settings_i, &quit_i])?;
 
             let _tray = tauri::tray::TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
@@ -226,6 +263,23 @@ pub fn run() {
                     match event.id.as_ref() {
                         "quit" => {
                             std::process::exit(0);
+                        }
+                        "settings" => {
+                            if let Some(window) = app.get_webview_window("settings") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            } else {
+                                // Create settings window
+                                let _ = tauri::WebviewWindowBuilder::new(
+                                    app,
+                                    "settings",
+                                    tauri::WebviewUrl::App("index.html".into())
+                                )
+                                .title("设置")
+                                .inner_size(500.0, 600.0)
+                                .resizable(false)
+                                .build();
+                            }
                         }
                         "toggle" => {
                             if let Some(window) = app.get_webview_window("main") {
@@ -242,14 +296,19 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Register global shortcut Ctrl+Shift+C
+            // Register global shortcut
             use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
-            let shortcut = Shortcut::new(Some(tauri_plugin_global_shortcut::Modifiers::ALT | tauri_plugin_global_shortcut::Modifiers::SHIFT), tauri_plugin_global_shortcut::Code::KeyC);
+            use std::str::FromStr;
+            
+            let config_path = app.handle().path().app_config_dir().unwrap().join("shortcut.txt");
+            let shortcut_str = std::fs::read_to_string(config_path).unwrap_or_else(|_| "Alt+Shift+C".to_string());
+            let shortcut = Shortcut::from_str(&shortcut_str).unwrap_or_else(|_| Shortcut::new(Some(tauri_plugin_global_shortcut::Modifiers::ALT | tauri_plugin_global_shortcut::Modifiers::SHIFT), tauri_plugin_global_shortcut::Code::KeyC));
+            
             let picking_state_shortcut = picking_state.clone();
             app.handle().plugin(
                 tauri_plugin_global_shortcut::Builder::new()
-                    .with_handler(move |app, req_shortcut, event| {
-                        if req_shortcut == &shortcut && event.state == ShortcutState::Pressed {
+                    .with_handler(move |app, _req_shortcut, event| {
+                        if event.state == ShortcutState::Pressed {
                             if let Some(window) = app.get_webview_window("main") {
                                 let is_visible = window.is_visible().unwrap_or(false);
                                 if is_visible {
@@ -289,7 +348,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_picking,
             stop_picking,
-            get_current_color
+            get_current_color,
+            get_shortcut,
+            set_shortcut
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
