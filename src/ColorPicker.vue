@@ -159,12 +159,16 @@ onMounted(async () => {
     locked.value = true;
     isPickingUi.value = false;
     
-    // Toast is mostly invisible since window is hidden immediately by Rust,
-    // but we reset states here anyway.
+    // 延迟隐藏窗口，以便用户看到 Toast 提示
     setTimeout(() => {
       showCopied.value = false;
-      locked.value = false;
-    }, 800);
+      
+      // 等待 Toast 消失动画 (150ms) 结束后再隐藏物理窗口
+      setTimeout(async () => {
+        locked.value = false;
+        await invoke('stop_picking');
+      }, 200);
+    }, 1200);
   });
 });
 
@@ -242,17 +246,23 @@ onUnmounted(() => {
     
     <!-- Copied toast -->
     <transition enter-active-class="transition duration-200 ease-out"
-                enter-from-class="opacity-0 scale-95"
+                enter-from-class="opacity-0 scale-90"
                 enter-to-class="opacity-100 scale-100"
                 leave-active-class="transition duration-150 ease-in"
                 leave-from-class="opacity-100 scale-100"
-                leave-to-class="opacity-0 scale-95">
-      <div v-if="showCopied" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 z-50">
-        <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-        </svg>
-        <span class="text-lg font-medium">Color Copied!</span>
-        <span class="ml-2 font-mono text-gray-300">{{ color }}</span>
+                leave-to-class="opacity-0 scale-90">
+      <div v-if="showCopied" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-[#2C2C2E]/95 backdrop-blur-sm text-white px-5 py-3 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.24)] border border-white/10 flex items-center gap-3 z-50 pointer-events-none">
+        <div class="flex items-center justify-center w-7 h-7 rounded-full bg-green-500/20">
+          <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+          </svg>
+        </div>
+        <span class="text-[15px] font-medium tracking-wide">颜色已复制</span>
+        <div class="w-[1px] h-4 bg-white/20 mx-0.5"></div>
+        <div class="flex items-center gap-2">
+          <div class="w-4 h-4 rounded-sm shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)]" :style="{ backgroundColor: color }"></div>
+          <span class="font-mono text-[14px] text-gray-200 pt-[1px]">{{ color }}</span>
+        </div>
       </div>
     </transition>
   </div>

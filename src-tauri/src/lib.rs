@@ -140,6 +140,7 @@ fn toggle_window(app_handle: tauri::AppHandle, state: tauri::State<'_, AppState>
             let _ = app_handle.emit("exit-picking", ());
         } else {
             let _ = window.show();
+            let _ = window.set_ignore_cursor_events(false);
             state.picking.store(true, Ordering::SeqCst);
             let position = Mouse::get_mouse_position();
             if let Mouse::Position { x, y } = position {
@@ -361,8 +362,9 @@ pub fn run() {
                                 }
                                 
                                 picking_state_clone.store(false, Ordering::SeqCst);
+                                // 让前端负责延迟隐藏以展示 Toast，但在此期间允许鼠标穿透
                                 if let Some(window) = app_handle.get_webview_window("main") {
-                                    let _ = window.hide();
+                                    let _ = window.set_ignore_cursor_events(true);
                                 }
                             }
                         }
@@ -457,6 +459,7 @@ pub fn run() {
                                     let _ = app.emit("exit-picking", ());
                                 } else {
                                     let _ = window.show();
+                                    let _ = window.set_ignore_cursor_events(false);
                                     picking_state_shortcut.store(true, Ordering::SeqCst);
                                     let position = Mouse::get_mouse_position();
                                     if let Mouse::Position { x, y } = position {

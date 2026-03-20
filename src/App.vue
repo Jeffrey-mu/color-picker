@@ -33,6 +33,10 @@ onMounted(async () => {
     await listen('exit-picking', () => {
       document.body.className = pickerInactiveClasses;
     });
+
+    await listen('color-copied', () => {
+      document.body.className = pickerInactiveClasses;
+    });
     
     // 初始化为取色模式
     document.body.className = pickerActiveClasses;
